@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>About - Delta Compression Demo</title>
+<style>
+:root {
+    --color-primary: #1a73e8;
+    --color-text: #202124;
+    --color-text-secondary: #5f6368;
+    --color-border: #dadce0;
+    --color-surface: #ffffff;
+    --color-surface-variant: #f8f9fa;
+    --font-family-base: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-family-mono: "SF Mono", "Cascadia Code", Consolas, monospace;
+    --max-width: 800px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--font-family-base); color: var(--color-text);
+       background: var(--color-surface-variant); line-height: 1.7; }
+.container { max-width: var(--max-width); margin: 0 auto; padding: 48px 24px; }
+h1 { font-size: 2rem; margin-bottom: 8px; }
+.subtitle { color: var(--color-text-secondary); font-size: 1.1rem; margin-bottom: 32px; }
+h2 { font-size: 1.25rem; margin-top: 32px; margin-bottom: 12px; color: var(--color-primary); }
+p { margin-bottom: 16px; }
+code { font-family: var(--font-family-mono); background: #eef; padding: 2px 6px;
+       border-radius: 3px; font-size: 0.9em; }
+pre { background: #1a2332; color: #e0e6ed; padding: 16px; border-radius: 8px;
+      overflow-x: auto; margin: 16px 0; font-size: 0.85rem; line-height: 1.5; }
+pre code { background: none; padding: 0; color: inherit; }
+a { color: var(--color-primary); }
+.back { display: inline-block; margin-bottom: 24px; font-size: 0.875rem; }
+table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--color-border);
+         font-size: 0.875rem; }
+th { background: var(--color-surface-variant); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="container">
+<a class="back" href="/">&larr; Back to demo</a>
+<h1>Delta Compression for Dynamic HTML</h1>
+<p class="subtitle">
+    Using previous responses as compression dictionaries for content served with
+    <code>Cache-Control: no-cache</code>
+</p>
+
+<h2>The gap in RFC 9842</h2>
+<p>
+    <a href="https://datatracker.ietf.org/doc/rfc9842/">RFC 9842</a>
+    (Compression Dictionary Transport) enables two use cases: delta compression
+    for <strong>versioned static resources</strong> (using <code>app.v1.js</code> as a
+    dictionary for <code>app.v2.js</code>) and <strong>pre-built shared dictionaries</strong>
+    for dynamic content (a separately authored dictionary file fetched during idle time).
+</p>
+<p>
+    Neither approach addresses the largest class of dynamic web content: pages served
+    with <code>max-age=0</code> or <code>no-cache</code> — search results, news feeds,
+    social media timelines, dashboards. Under RFC 9842, a response's usability as a
+    dictionary is tied to its HTTP cache lifetime.  When a page expires immediately,
+    the browser discards it from the dictionary cache before the user navigates to the
+    next page. <strong>There is no dictionary to reference.</strong>
+</p>
+
+<h2>What Dictionary TTL changes</h2>
+<p>
+    <a href="https://groups.google.com/a/chromium.org/g/blink-dev/c/pW8bjRXGNKs">Dictionary TTL</a>
+    is an experimental extension to the <code>Use-As-Dictionary</code> header that
+    decouples dictionary lifetime from HTTP cache lifetime:
+</p>
+<pre><code>Use-As-Dictionary: match="/search*", ttl=600</code></pre>
+<p>
+    This tells the browser: keep this response usable as a dictionary for 600 seconds,
+    regardless of <code>Cache-Control</code>.  A dynamic page served with
+    <code>max-age=0</code> can now survive long enough to serve as a dictionary
+    for the next navigation.
+</p>
+
+<h2>Protocol flow</h2>
+<pre><code>Browser                                Server
+  │                                        │
+  │  GET /search?q=cats                    │
+  │───────────────────────────────────────>│
+  │                                        │  generate, compress, cache
+  │  Content-Encoding: br                  │
+  │  Use-As-Dictionary: match="/*",ttl=600 │
+  │  Content-Dictionary: :&lt;b64 SHA-256&gt;:   │
+  │&lt;───────────────────────────────────────│
+  │                                        │
+  │  [browser caches as dictionary]        │
+  │                                        │
+  │  GET /search?q=dogs                    │
+  │  Available-Dictionary: :&lt;b64 SHA-256&gt;: │
+  │───────────────────────────────────────>│
+  │                                        │  look up dict, compress delta
+  │  Content-Encoding: dcb                 │
+  │&lt;───────────────────────────────────────│</code></pre>
+
+<h2>What this demo measures</h2>
+<table>
+<tr><th>Mode</th><th>Dictionary</th><th>Content-Encoding</th></tr>
+<tr><td>Standard Brotli</td><td>None (built-in static only)</td><td><code>br</code></td></tr>
+<tr><td>Static Dictionary</td><td>Pre-built from 5 sample pages (64 KB)</td><td><code>dcb</code></td></tr>
+<tr><td>Delta Compression</td><td>Previous response (full page)</td><td><code>dcb</code></td></tr>
+</table>
+<p>
+    Compression is measured on the full rendered page (skeleton + dynamic content)
+    <strong>without</strong> the metrics panel, since the panel is an educational overlay.
+    The skeleton — inline CSS, JS, header, nav, footer — is byte-for-byte identical
+    across all pages and constitutes ~60% of the payload.
+</p>
+
+<h2>How to use this demo</h2>
+<p>
+    Search for anything on the <a href="/">main page</a>. The first page shows
+    standard and static shared dictionary Brotli only. On the second search, the metrics panel shows all three
+    modes, with the delta compression bar in green. Keep searching to see how
+    ratios vary across different queries. Note how the compression ratio spikes on duplicate or refresh queries.
+</p>
+<p>
+    Open DevTools → Network tab to inspect the real CDT headers
+    (<code>Use-As-Dictionary</code>, <code>Content-Dictionary</code>,
+    <code>Vary</code>) on every response. The <a href="/metrics">JSON API</a>
+    provides raw measurement data.
+</p>
+
+<h2 id="methodology">Measurement Methodology</h2>
+<p>Compression is measured exclusively on the raw web page data. In modern dynamic websites, a large amount of bandwidth is consumed by hidden blocks of personalized, user-specific session data (such as user profiles, encrypted tokens, and personalized inventory lists) that are injected directly into the HTML.</p>
+<p>To ensure rigorous and scientifically accurate measurements, the compression logic in this demo executes on the clean page <strong>prior</strong> to adding the visual metrics overlay. This ensures that the tracked ratios strictly reflect realistic, internet-scale web delivery behavior and are not artificially skewed by the byte footprint of the demonstration interface itself.</p>
+<p><strong>Note on Browser Support &amp; Simulation:</strong> You can open DevTools &rarr; Network tab to inspect the real CDT headers (<code>Use-As-Dictionary</code>, <code>Vary</code>) attached to every response. However, because the Dictionary TTL extension is an emerging capability and may not be natively enabled in all browsers, this demonstration employs a seamless server-side fallback. We use a temporary cookie (<code>_dict_hash</code>) to simulate the browser sending the <code>Available-Dictionary</code> header. This guarantees the server can demonstrate the exact protocol flow and calculate accurate delta compression metrics, even if your browser has not yet implemented the TTL specification.</p>
+
+<h2 id="license">License</h2>
+<p>MIT License &copy; 2026 Carlos Mateo Muñoz. This is a demonstration server to test and validate RFC 9842 concepts using simulated personalized user data for open-web standards.</p>
+
+</div>
+</body>
+</html>

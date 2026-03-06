@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>{{ query }} - Delta Compression Demo</title>
+<style>
+:root {
+    --color-primary: #1a73e8;
+    --color-primary-dark: #1557b0;
+    --color-text: #202124;
+    --color-text-secondary: #5f6368;
+    --color-link: #1a0dab;
+    --color-link-visited: #681da8;
+    --color-border: #dadce0;
+    --color-surface: #ffffff;
+    --color-surface-variant: #f8f9fa;
+    --color-success: #188038;
+    --color-warning: #ea8600;
+    --font-family-base: -apple-system, BlinkMacSystemFont, "Segoe UI",
+        Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-family-mono: "SF Mono", "Cascadia Code", "Fira Code",
+        Consolas, monospace;
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
+    --spacing-md: 16px;
+    --spacing-lg: 24px;
+    --spacing-xl: 32px;
+    --spacing-2xl: 48px;
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 16px;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.1);
+    --shadow-md: 0 2px 8px rgba(0,0,0,0.12);
+    --shadow-lg: 0 4px 16px rgba(0,0,0,0.15);
+    --transition-fast: 150ms ease;
+    --transition-normal: 250ms ease;
+    --max-width: 1200px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { 
+    font-size: 16px; 
+    -webkit-text-size-adjust: 100%; 
+    width: 100%;
+    overflow-x: hidden;
+}
+body {
+    font-family: var(--font-family-base);
+    color: var(--color-text);
+    background: var(--color-surface-variant);
+    line-height: 1.6;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+body.modal-open {
+    overflow: hidden;
+}
+a { color: var(--color-link); text-decoration: none; transition: color var(--transition-fast); }
+a:visited { color: var(--color-link-visited); }
+a:hover { text-decoration: underline; }
+
+.header-inner, 
+.explainer-container, 
+.metrics-panel, 
+.main-container, 
+.footer-inner, 
+.footer-bottom {
+    width: 100%;
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding-left: var(--spacing-lg);
+    padding-right: var(--spacing-lg);
+}
+
+.site-header {
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+    position: sticky; top: 0; z-index: 100;
+    box-shadow: var(--shadow-sm);
+    padding: var(--spacing-md) 0;
+}
+.header-inner {
+    display: flex; align-items: center; gap: var(--spacing-lg);
+}
+.logo-container { display: flex; flex-direction: column; }
+.logo { font-size: 1.5rem; font-weight: 700; color: var(--color-primary); white-space: nowrap; line-height: 1.2; }
+.logo a { color: inherit; text-decoration: none; }
+.logo-subtitle { font-size: 0.85rem; color: var(--color-text-secondary); font-weight: 400; margin-top: 2px; }
+.logo-subtitle a { color: inherit; text-decoration: none; }
+
+.search-form { flex: 1; max-width: 600px; position: relative; }
+.search-form input {
+    width: 100%; padding: var(--spacing-sm) var(--spacing-md); padding-left: 40px;
+    border: 1px solid var(--color-border); border-radius: 24px;
+    font-size: 0.95rem; outline: none;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.search-form input:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.15);
+}
+.search-form .search-icon {
+    position: absolute; left: 14px; top: 50%;
+    transform: translateY(-50%); color: var(--color-text-secondary); pointer-events: none;
+}
+.nav-links { display: flex; align-items: center; gap: var(--spacing-md); flex-shrink: 0; }
+.nav-links a {
+    color: var(--color-text-secondary); font-size: 0.875rem;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--radius-sm); transition: background var(--transition-fast);
+}
+.nav-links a:hover { background: var(--color-surface-variant); text-decoration: none; }
+
+.mobile-info-btn {
+    display: none; 
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 56px;
+    height: 56px;
+    background: var(--color-primary);
+    color: white;
+    border: none; 
+    border-radius: 50%;
+    box-shadow: 0 4px 12px rgba(26, 115, 232, 0.4);
+    z-index: 999; /* Stays under the modal backdrop */
+    cursor: pointer;
+    align-items: center; 
+    justify-content: center;
+    transition: transform var(--transition-fast), background var(--transition-fast);
+}
+.mobile-info-btn:active { 
+    background: var(--color-primary-dark);
+    transform: scale(0.95); 
+}
+
+/* ---- Explainer Dialog ---- */
+.explainer-container {
+    margin: var(--spacing-lg) auto 0;
+}
+.explainer-dialog {
+    background: #e8f0fe;
+    border: 1px solid #c2e0ff;
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-md) var(--spacing-lg);
+    display: none; /* Hidden by default, JS reveals it */
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: var(--shadow-sm);
+}
+.explainer-content {
+    font-size: 0.9rem;
+    color: #1967d2;
+    line-height: 1.5;
+}
+.explainer-content strong {
+    font-size: 0.95rem;
+}
+.explainer-close {
+    background: none; border: none; color: #1967d2;
+    font-size: 1.75rem; cursor: pointer; line-height: 1;
+    padding: 0 0 0 var(--spacing-md); transition: color var(--transition-fast);
+}
+.explainer-close:hover { color: #1557b0; }
+
+/* ---- Metrics panel ---- */
+.metrics-panel { margin: var(--spacing-lg) auto 0; }
+.metrics-card {
+    background: linear-gradient(135deg, #1a2332 0%, #0d1b2a 100%);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-lg) var(--spacing-xl);
+    color: #e0e6ed; box-shadow: var(--shadow-lg);
+}
+.metrics-card h2 {
+    font-size: 0.8125rem; text-transform: uppercase; letter-spacing: 0.08em;
+    color: #7eb8da; margin-bottom: var(--spacing-md);
+}
+.metrics-grid {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--spacing-lg);
+}
+.metric-item { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: break-word; }
+.metric-label { font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.05em; color: #8899aa; }
+.metric-value { font-size: 1.5rem; font-weight: 700; font-family: var(--font-family-mono); color: #ffffff; }
+.metric-value.highlight { color: #4ade80; }
+.metric-value.primary { color: #60a5fa; }
+.metric-sub { font-size: 0.75rem; color: #8899aa; font-family: var(--font-family-mono); }
+.metrics-bar-row { margin-top: var(--spacing-md); padding-top: var(--spacing-md); border-top: 1px solid #2a3a4a; }
+.bar-container { display: flex; flex-direction: column; gap: var(--spacing-sm); }
+.bar-item { display: flex; align-items: center; gap: var(--spacing-md); }
+.bar-label { font-size: 0.75rem; color: #8899aa; min-width: 140px; text-align: right; }
+.bar-track { flex: 1; height: 24px; background: #1e2d3d; border-radius: 4px; overflow: hidden; position: relative; }
+.bar-fill {
+    height: 100%; border-radius: 4px; display: flex; align-items: center; padding-left: 8px;
+    font-size: 0.6875rem; font-family: var(--font-family-mono); color: white; font-weight: 600; white-space: nowrap;
+}
+.bar-fill.standard { background: #475569; }
+.bar-fill.static-dict { background: #2563eb; }
+.bar-fill.delta { background: #16a34a; }
+.metrics-footer {
+    margin-top: var(--spacing-md); padding-top: var(--spacing-sm); border-top: 1px solid #2a3a4a;
+    font-size: 0.6875rem; color: #667788; display: flex; justify-content: space-between; flex-wrap: wrap; gap: var(--spacing-sm);
+}
+.metrics-footer code { font-family: var(--font-family-mono); background: #1e2d3d; padding: 1px 6px; border-radius: 3px; color: #8899aa; }
+.metrics-note {
+    margin-top: var(--spacing-md); padding: var(--spacing-md); background: #1e2d3d;
+    border-radius: var(--radius-md); border-left: 3px solid #7eb8da; font-size: 0.8125rem; color: #aabbcc; line-height: 1.5;
+}
+
+/* ---- Main layout ---- */
+.main-container {
+    margin: 0 auto; padding-top: var(--spacing-lg); padding-bottom: var(--spacing-lg);
+    display: grid; grid-template-columns: 1fr 320px; gap: var(--spacing-xl); flex: 1;
+}
+.results-meta { font-size: 0.8125rem; color: var(--color-text-secondary); margin-bottom: var(--spacing-md); }
+.result-card {
+    background: var(--color-surface); border-radius: var(--radius-md);
+    padding: var(--spacing-lg); margin-bottom: var(--spacing-md);
+    box-shadow: var(--shadow-sm); transition: box-shadow var(--transition-normal);
+    overflow-wrap: break-word; word-wrap: break-word; word-break: break-word; min-width: 0;
+}
+.result-card:hover { box-shadow: var(--shadow-md); }
+.result-url {
+    font-size: 0.8125rem; color: var(--color-text-secondary);
+    margin-bottom: var(--spacing-xs); display: flex; align-items: center; gap: var(--spacing-xs);
+}
+.result-url .favicon { width: 16px; height: 16px; border-radius: 2px; background: var(--color-border); display: inline-block; }
+.result-title { font-size: 1.125rem; line-height: 1.4; margin-bottom: var(--spacing-sm); }
+.result-title a { color: var(--color-link); }
+.result-title a:visited { color: var(--color-link-visited); }
+.result-snippet { font-size: 0.875rem; color: var(--color-text-secondary); line-height: 1.55; }
+.result-meta { margin-top: 4px; font-size: 0.875rem; color: #70757a; display: flex; gap: 15px; }
+.result-tags { margin-top: var(--spacing-sm); display: flex; gap: var(--spacing-xs); flex-wrap: wrap; }
+.tag {
+    font-size: 0.75rem; padding: 2px var(--spacing-sm);
+    background: var(--color-surface-variant); border: 1px solid var(--color-border);
+    border-radius: 12px; color: var(--color-text-secondary);
+}
+.sidebar { display: flex; flex-direction: column; gap: var(--spacing-lg); min-width: 0; }
+.sidebar-card {
+    background: var(--color-surface); border-radius: var(--radius-md);
+    padding: var(--spacing-lg); box-shadow: var(--shadow-sm);
+    overflow-wrap: break-word; word-wrap: break-word; word-break: break-word; min-width: 0;
+}
+.sidebar-card h3 {
+    font-size: 0.9375rem; margin-bottom: var(--spacing-md);
+    padding-bottom: var(--spacing-sm); border-bottom: 1px solid var(--color-border);
+}
+
+/* Specific styling for the Tech Explainer Card / Modal */
+.modal-backdrop {
+    display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5); z-index: 1000; opacity: 0; transition: opacity 0.3s;
+}
+.modal-backdrop.active { display: block; opacity: 1; }
+
+.tech-explainer-card {
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: var(--radius-md); padding: var(--spacing-lg); box-shadow: var(--shadow-sm);
+    position: relative;
+    overflow-wrap: break-word; word-wrap: break-word; word-break: break-word; min-width: 0;
+}
+.tech-explainer-card h3 {
+    color: var(--color-text); font-size: 1rem; margin-bottom: 12px;
+    padding-bottom: 8px; border-bottom: 1px solid var(--color-border);
+    display: flex; align-items: center; gap: 8px;
+}
+.tech-explainer-list { list-style-type: none; padding: 0; margin: 0; }
+.tech-explainer-list li {
+    position: relative; padding-left: 16px; margin-bottom: 12px;
+    font-size: 0.85rem; color: var(--color-text-secondary); line-height: 1.5;
+}
+.tech-explainer-list li::before {
+    content: "►"; position: absolute; left: 0; color: var(--color-primary);
+    font-size: 0.75rem; top: 2px;
+}
+.close-modal-btn {
+    display: none; position: absolute; top: 16px; right: 16px;
+    background: none; border: none; font-size: 1.75rem; color: var(--color-text-secondary);
+    cursor: pointer; line-height: 1; padding: 4px;
+}
+
+.sidebar-item { padding: var(--spacing-sm) 0; border-bottom: 1px solid var(--color-surface-variant); font-size: 0.8125rem; }
+.sidebar-item:last-child { border-bottom: none; }
+.sidebar-item a { color: var(--color-text); }
+.pagination { display: flex; justify-content: center; gap: var(--spacing-sm); padding: var(--spacing-xl) 0; }
+.pagination a, .pagination span {
+    padding: var(--spacing-sm) var(--spacing-md);
+    border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+    font-size: 0.875rem; color: var(--color-primary);
+}
+.pagination .current { background: var(--color-primary); color: white; border-color: var(--color-primary); }
+
+.site-footer {
+    background: var(--color-surface); border-top: 1px solid var(--color-border);
+    padding: var(--spacing-xl) 0; margin-top: auto;
+}
+.footer-inner {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--spacing-xl);
+}
+.footer-section h4 {
+    font-size: 0.8125rem; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--color-text-secondary); margin-bottom: var(--spacing-md);
+}
+.footer-section a { display: block; font-size: 0.8125rem; color: var(--color-text-secondary); padding: var(--spacing-xs) 0; }
+.footer-bottom {
+    margin: var(--spacing-lg) auto 0; padding-top: var(--spacing-lg); border-top: 1px solid var(--color-border);
+    font-size: 0.75rem; color: var(--color-text-secondary); display: flex; justify-content: space-between;
+}
+
+/* =========================================
+   MOBILE RESPONSIVENESS
+   ========================================= */
+@media (max-width: 900px) {
+    /* Normalize padding to prevent horizontal scroll */
+    .header-inner, 
+    .explainer-container, 
+    .metrics-panel, 
+    .main-container, 
+    .footer-inner, 
+    .footer-bottom {
+        padding-left: var(--spacing-md);
+        padding-right: var(--spacing-md);
+    }
+
+    /* Header Reorganization: Search breaks to a new line */
+    .header-inner { flex-wrap: wrap; gap: var(--spacing-sm); }
+    .logo-container { flex: 1; }
+    .nav-links { order: 2; gap: var(--spacing-sm); }
+    .search-form { order: 3; flex: 1 1 100%; max-width: none; margin-top: 4px; }
+    
+    .mobile-info-btn { display: flex; } /* Show FAB */
+
+    /* Modal Logic: Convert Card to Bottom Sheet */
+    .tech-explainer-card {
+        position: fixed; bottom: -100%; left: 0; width: 100%; margin: 0;
+        border-radius: 20px 20px 0 0; z-index: 1001;
+        box-shadow: 0 -4px 16px rgba(0,0,0,0.2);
+        transition: bottom 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+        max-height: 85vh; overflow-y: auto;
+        padding: var(--spacing-xl) var(--spacing-lg) 40px var(--spacing-lg);
+    }
+    .tech-explainer-card.active { bottom: 0; }
+    .close-modal-btn { display: block; }
+
+    /* Main Layout Stacking - Fix Grid Blowout */
+    .main-container { grid-template-columns: minmax(0, 1fr); overflow: hidden; }
+    .sidebar { order: 2; margin-top: var(--spacing-md); min-width: 0; }
+    
+    /* Metrics Adaptation to prevent overflow */
+    .metrics-card { padding: var(--spacing-md); }
+    .metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--spacing-md); }
+    .metric-value { font-size: 1.25rem; word-break: break-all; } /* Break long numbers */
+    .bar-item { flex-direction: column; align-items: flex-start; gap: 4px; }
+    .bar-label { min-width: unset; text-align: left; font-size: 0.6875rem; }
+    .bar-track { width: 100%; }
+
+    /* Footer Adaptation */
+    .footer-inner { grid-template-columns: repeat(2, 1fr); }
+    .footer-bottom { flex-direction: column; text-align: center; gap: var(--spacing-sm); }
+}
+
+@media (max-width: 600px) {
+    .logo { font-size: 1.25rem; }
+    .nav-links { display: none; } /* Hide text links to save space. Nav is clean */
+}
+</style>
+<script>
+    // Personalized user session data (~40KB). Standard Brotli struggles with this complex data, keeping the baseline realistic.
+    window.__INITIAL_STATE__ = {{ heavy_state | safe }};
+    
+    // Tiny dynamic request metadata. The unique UUID guarantees delta > 14 bytes.
+    window.__PAGE_DATA__ = {{ page_data | safe }};
+</script>
+</head>
+<body>
+
+<!-- ========== FLOATING INFO BUTTON (MOBILE) ========== -->
+<button class="mobile-info-btn" id="mobileInfoBtn" aria-label="How it works">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+</button>
+
+<div class="modal-backdrop" id="modalBackdrop"></div>
+
+<header class="site-header">
+<div class="header-inner">
+<div class="logo-container">
+    <div class="logo"><a href="/">Delta Compression Demo</a></div>
+    <div class="logo-subtitle">By <a href="https://www.linkedin.com/in/carlosmateom/" target="_blank" style="color: inherit;">Carlos Mateo Muñoz</a></div>
+</div>
+
+<nav class="nav-links">
+    <a href="/about" class="text-link">About</a>
+    <a href="/metrics" target="_blank" class="text-link">Metrics API</a>
+</nav>
+
+<form class="search-form" action="/" method="GET">
+<span class="search-icon">&#128269;</span>
+<input type="text" name="q" placeholder="Search to see delta compression in action..." value="{{ query }}">
+</form>
+
+</div>
+</header>
+
+<!-- ========== EXPLAINER DIALOG ========== -->
+<div class="explainer-container">
+    <div class="explainer-dialog" id="explainerDialog">
+        <div class="explainer-content">
+            <strong>Welcome to the Delta Compression Demo!</strong> This page demonstrates how RFC 9842 shrinks heavy payloads in dynamic websites. See the <strong>Activity Graph</strong> and <strong>Notifications</strong>? That simulates heavy, user-specific data that stays constant across your session. When you search, only the <strong>articles</strong> change. Delta Compression uses your <em>previous page</em> as a dictionary to skip resending the constant data, squeezing the payload down to nearly zero bytes!
+        </div>
+        <button class="explainer-close" id="dismissExplainer" aria-label="Dismiss">&times;</button>
+    </div>
+</div>
+<script>
+    if (!sessionStorage.getItem('hideDeltaExplainer')) {
+        document.getElementById('explainerDialog').style.display = 'flex';
+    }
+    document.getElementById('dismissExplainer').addEventListener('click', function() {
+        document.getElementById('explainerDialog').style.display = 'none';
+        sessionStorage.setItem('hideDeltaExplainer', 'true');
+    });
+</script>
+
+<!-- ========== METRICS PANEL ========== -->
+{{ metrics_html | safe }}
+
+<!-- ========== DYNAMIC CONTENT ========== -->
+<div class="main-container">
+<main class="results">
+{{ content_html | safe }}
+</main>
+<aside class="sidebar">
+    
+    <!-- ========== TECH EXPLAINER CARD / MOBILE MODAL ========== -->
+    <div class="tech-explainer-card" id="techExplainerCard">
+        <button class="close-modal-btn" id="closeModalBtn" aria-label="Close">&times;</button>
+        <h3>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+            Under the Hood
+        </h3>
+        <ul class="tech-explainer-list">
+            <li><strong>The Problem:</strong> Dynamic websites resend heavy, user-specific data on every click. Here, your <strong>Activity Graph</strong> and <strong>Notifications</strong> simulate this constant, hard-to-compress data overhead.</li>
+            <li><strong>The Mechanism:</strong> This server uses RFC 9842 to tell your browser to keep the raw code of your current page in its network cache to use as a <em>reference dictionary</em>.</li>
+            <li><strong>The Result:</strong> When you click a link, the server doesn't resend the code for the sidebar. It simply sends the new <strong>articles</strong>, plus tiny instructions to "copy the rest from the dictionary." This drops the transferred data to near-zero!</li>
+        </ul>
+    </div>
+
+    {{ sidebar_content | safe }}
+</aside>
+</div>
+
+<!-- ========== SHARED FOOTER ========== -->
+<footer class="site-footer">
+<div class="footer-inner">
+<div class="footer-section">
+<h4>Standards & Specs</h4>
+<a href="https://datatracker.ietf.org/doc/rfc9842/" target="_blank">RFC 9842 (CDT)</a>
+<a href="https://datatracker.ietf.org/doc/rfc7932/" target="_blank">RFC 7932 (Brotli)</a>
+</div>
+<div class="footer-section">
+<h4>Case Studies & Research</h4>
+<a href="https://developer.chrome.com/blog/search-compression-dictionaries" target="_blank">Chrome Dev Case Study</a>
+<a href="https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Compression_dictionary_transport" target="_blank">MDN: Compression Dictionary Transport</a>
+<a href="https://almanac.httparchive.org/" target="_blank">HTTP Archive Web Almanac</a>
+<a href="https://calendar.perfplanet.com/" target="_blank">PerfPlanet Articles</a>
+</div>
+<div class="footer-section">
+<h4>Interoperability Tracks</h4>
+<a href="https://issues.chromium.org/" target="_blank">Chromium Issue Tracker</a>
+<a href="https://bugzilla.mozilla.org/" target="_blank">Mozilla Bugzilla</a>
+</div>
+<div class="footer-section">
+<h4>About</h4>
+<a href="/about">About This Demo</a>
+<a href="/metrics" target="_blank">Raw Metrics API</a>
+<a href="/about#methodology">Methodology</a>
+<a href="/about#license">License</a>
+</div>
+</div>
+<div class="footer-bottom">
+<span>&copy; 2026 <a href="https://www.linkedin.com/in/carlosmateom/" target="_blank" style="color: inherit; text-decoration: underline;">Carlos Mateo Muñoz</a>. Delta Compression Validation Server.</span>
+<span>
+<a href="https://github.com/carlosmateo10/delta-compression-demo" target="_blank">GitHub Repository</a>
+</span>
+</div>
+</footer>
+<script>
+(function(){'use strict';
+// --- Modal Logic ---
+var infoBtn = document.getElementById('mobileInfoBtn');
+var modalCard = document.getElementById('techExplainerCard');
+var modalBackdrop = document.getElementById('modalBackdrop');
+var closeBtn = document.getElementById('closeModalBtn');
+
+function openModal() {
+    modalCard.classList.add('active');
+    modalBackdrop.classList.add('active');
+    document.body.classList.add('modal-open');
+}
+function closeModal() {
+    modalCard.classList.remove('active');
+    modalBackdrop.classList.remove('active');
+    document.body.classList.remove('modal-open');
+}
+
+if (infoBtn) infoBtn.addEventListener('click', openModal);
+if (closeBtn) closeBtn.addEventListener('click', closeModal);
+if (modalBackdrop) modalBackdrop.addEventListener('click', closeModal);
+
+// --- Performance Observer & Demo Scripts ---
+var po=new PerformanceObserver(function(l){var e=l.getEntries();for(var i=0;i<e.length;i++){if(e[i].entryType==='largest-contentful-paint')console.log('[Perf] LCP:',e[i].startTime.toFixed(1),'ms');if(e[i].entryType==='layout-shift'&&!e[i].hadRecentInput)console.log('[Perf] CLS:',e[i].value.toFixed(4));}});
+try{po.observe({type:'largest-contentful-paint',buffered:true});po.observe({type:'layout-shift',buffered:true});}catch(e){}
+window.addEventListener('load',function(){setTimeout(function(){var t=performance.getEntriesByType('navigation')[0];if(t){console.log('[Perf] Transfer:',t.transferSize,'Encoded:',t.encodedBodySize,'Decoded:',t.decodedBodySize);if(t.decodedBodySize>0&&t.encodedBodySize>0)console.log('[Perf] Ratio:',+(t.decodedBodySize/t.encodedBodySize).toFixed(2)+'x');}},0);});
+document.querySelectorAll('.result-card').forEach(function(c,i){c.addEventListener('click',function(e){if(e.target.tagName==='A')console.log('[Analytics]',{pos:i+1,url:e.target.href});});});
+if('IntersectionObserver' in window){var io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('visible');io.unobserve(e.target);}});},{rootMargin:'200px'});document.querySelectorAll('.result-card').forEach(function(c){io.observe(c);});}
+if(window.matchMedia('(prefers-reduced-motion: reduce)').matches){document.documentElement.style.setProperty('--transition-fast','0ms');document.documentElement.style.setProperty('--transition-normal','0ms');}
+var hdr=document.querySelector('.site-header'),ly=0,tk=false;window.addEventListener('scroll',function(){ly=window.scrollY;if(!tk){requestAnimationFrame(function(){hdr.style.boxShadow=ly>10?'var(--shadow-md)':'var(--shadow-sm)';tk=false;});tk=true;}});
+})();
+</script>
+</body>
+</html>

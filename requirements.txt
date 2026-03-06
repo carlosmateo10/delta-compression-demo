@@ -1,0 +1,4 @@
+brotlipy>=0.7.0
+flask>=3.0.0
+gunicorn>=22.0.0
+faker>=20.0.0
